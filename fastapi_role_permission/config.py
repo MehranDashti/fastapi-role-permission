@@ -24,6 +24,8 @@ class PermissionConfig:
     wildcard_enabled: bool = False
     display_permission_in_exception: bool = False
     display_role_in_exception: bool = False
+    enable_audit_logging: bool = False
+    audit_logger_name: str = "fastapi_rbac.audit"
 
     def get_cache_key(self) -> str:
         if self.cache_key_prefix:

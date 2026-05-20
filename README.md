@@ -1,5 +1,10 @@
 # fastapi-role-permission
 
+[![Tests](https://github.com/MehranDashti/fastapi-role-permission/actions/workflows/tests.yml/badge.svg)](https://github.com/MehranDashti/fastapi-role-permission/actions/workflows/tests.yml)
+[![PyPI version](https://badge.fury.io/py/fastapi-role-permission.svg)](https://pypi.org/project/fastapi-role-permission/)
+[![Python versions](https://img.shields.io/pypi/pyversions/fastapi-role-permission.svg)](https://pypi.org/project/fastapi-role-permission/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 RBAC (Role-Based Access Control) for FastAPI, inspired by Laravel's [Spatie Permission](https://github.com/spatie/laravel-permission) package.
 
 - Roles and permissions stored in the database
@@ -9,6 +14,7 @@ RBAC (Role-Based Access Control) for FastAPI, inspired by Laravel's [Spatie Perm
 - Wildcard permission patterns (`posts.*`, `*`)
 - FastAPI `Depends`-based guards + Starlette middleware
 - SQLAlchemy 2.x async
+- Audit logging (optional, zero new dependencies)
 
 ---
 
@@ -18,7 +24,13 @@ RBAC (Role-Based Access Control) for FastAPI, inspired by Laravel's [Spatie Perm
 pip install fastapi-role-permission
 ```
 
-**Optional: Redis support** (included by default via the `redis` package).
+**With Redis cache:**
+
+```bash
+pip install fastapi-role-permission[redis]
+```
+
+Without Redis the package automatically falls back to an in-memory cache (suitable for single-process apps and development).
 
 ---
 
@@ -201,25 +213,38 @@ init_rbac(
 )
 ```
 
-### 4. Protect routes
+### 4. Seed roles and permissions
 
 ```python
-from fastapi import Depends
+from fastapi_role_permission import seed_roles
+
+# Call once at startup or in a migration — safe to call multiple times
+await seed_roles(db, {
+    "admin":  ["*"],
+    "editor": ["posts.read", "posts.write"],
+    "viewer": ["posts.read"],
+})
+```
+
+### 5. Protect routes
+
+```python
 from fastapi_role_permission import require_permission, require_role, require_any_role
 
-@app.get("/posts", dependencies=[Depends(require_permission("posts.read"))])
+# require_* already returns a Depends() — no extra wrapping needed
+@app.get("/posts", dependencies=[require_permission("posts.read")])
 async def list_posts():
     return {"posts": [...]}
 
-@app.post("/posts", dependencies=[Depends(require_permission("posts.write"))])
+@app.post("/posts", dependencies=[require_permission("posts.write")])
 async def create_post():
     ...
 
-@app.get("/admin", dependencies=[Depends(require_role("admin"))])
+@app.get("/admin", dependencies=[require_role("admin")])
 async def admin_panel():
     ...
 
-@app.get("/content", dependencies=[Depends(require_any_role("admin", "editor"))])
+@app.get("/content", dependencies=[require_any_role("admin", "editor")])
 async def content_area():
     ...
 ```
@@ -231,14 +256,14 @@ async def content_area():
 ```python
 from fastapi_role_permission import Permission, Role
 
-# Create permissions
-read_posts  = await Permission.find_or_create(db, "posts.read")
-write_posts = await Permission.find_or_create(db, "posts.write")
-del_posts   = await Permission.find_or_create(db, "posts.delete")
+# Create permissions (with optional description)
+read_posts  = await Permission.find_or_create(db, "posts.read",   description="Read blog posts")
+write_posts = await Permission.find_or_create(db, "posts.write",  description="Create/edit blog posts")
+del_posts   = await Permission.find_or_create(db, "posts.delete", description="Delete blog posts")
 
-# Create roles
-editor = await Role.find_or_create(db, "editor")
-admin  = await Role.find_or_create(db, "admin")
+# Create roles (with optional description)
+editor = await Role.find_or_create(db, "editor", description="Can read and write posts")
+admin  = await Role.find_or_create(db, "admin",  description="Full access")
 
 # Assign permissions to roles
 await editor.give_permission_to(db, "posts.read", "posts.write")
@@ -251,15 +276,15 @@ await user.assign_role(db, "editor")
 await user.give_permission_to(db, "posts.delete")
 
 # Check permissions
-await user.has_permission_to(db, "posts.read")   # True (via role)
-await user.has_permission_to(db, "posts.delete") # True (direct)
+await user.has_permission_to(db, "posts.read")        # True (via role)
+await user.has_permission_to(db, "posts.delete")      # True (direct)
 await user.has_direct_permission(db, "posts.delete")  # True
 await user.has_permission_via_role(db, "posts.read")  # True
 
 # Check roles
-await user.has_role(db, "editor")                # True
-await user.has_any_role(db, "admin", "editor")   # True
-await user.has_all_roles(db, "admin", "editor")  # False
+await user.has_role(db, "editor")               # True
+await user.has_any_role(db, "admin", "editor")  # True
+await user.has_all_roles(db, "admin", "editor") # False
 ```
 
 ---
@@ -290,14 +315,30 @@ PermissionConfig(
     wildcard_enabled=False,         # enable wildcard patterns
     display_permission_in_exception=False,  # show required perms in 403 detail
     display_role_in_exception=False,        # show required roles in 403 detail
+    enable_audit_logging=False,     # log role/permission changes to standard logging
+    audit_logger_name="fastapi_rbac.audit", # logger name for audit events
 )
+```
+
+### `seed_roles(db, config, guard_name=None)`
+
+Bootstrap roles and permissions from a dict. Idempotent — safe to call on every startup.
+
+```python
+from fastapi_role_permission import seed_roles
+
+await seed_roles(db, {
+    "admin":  ["*"],
+    "editor": ["posts.read", "posts.write"],
+    "viewer": ["posts.read"],
+})
 ```
 
 ### `Permission` model
 
 ```python
-# Create
-perm = await Permission.create(db, "posts.read", guard_name="default")
+# Create (description is optional)
+perm = await Permission.create(db, "posts.read", description="Read blog posts")
 
 # Find
 perm = await Permission.find_by_name(db, "posts.read")
@@ -308,8 +349,8 @@ perm = await Permission.find_or_create(db, "posts.read")
 ### `Role` model
 
 ```python
-# Create
-role = await Role.create(db, "admin", guard_name="default", team_id=None)
+# Create (description is optional)
+role = await Role.create(db, "admin", description="Full access", team_id=None)
 
 # Find
 role = await Role.find_by_name(db, "admin")
@@ -353,13 +394,21 @@ await user.has_direct_permission(db, "posts.read")     # True only if direct
 await user.has_permission_via_role(db, "posts.read")   # True only if via role
 await user.has_any_permission(db, "posts.read", "posts.write")
 await user.has_all_permissions(db, "posts.read", "posts.write")
-await user.has_any_direct_permission(db, "posts.read")
-await user.has_all_direct_permissions(db, "posts.read", "posts.write")
 
 await user.get_direct_permissions(db)       # [Permission, ...]
 await user.get_permissions_via_roles(db)    # [Permission, ...]
 await user.get_all_permissions(db)          # combined, deduped
 await user.get_permission_names(db)         # ["posts.read", ...]
+```
+
+**Batch operations** (class methods for bulk assignments):
+
+```python
+# Assign one role to many users in a single INSERT
+await User.bulk_assign_roles(db, [user1, user2, user3], "viewer")
+
+# Give one permission to many users in a single INSERT
+await User.bulk_give_permission_to(db, [user1, user2], "posts.read")
 ```
 
 ### Dependency guards
@@ -373,17 +422,18 @@ from fastapi_role_permission import (
     require_role_or_permission,  # user must have a role OR permission from the list
 )
 
-@router.get("/", dependencies=[Depends(require_permission("posts.read"))])
-@router.get("/", dependencies=[Depends(require_any_permission("posts.read", "articles.read"))])
-@router.get("/", dependencies=[Depends(require_role("admin"))])
-@router.get("/", dependencies=[Depends(require_any_role("admin", "editor"))])
-@router.get("/", dependencies=[Depends(require_role_or_permission("admin", "posts.delete"))])
+# Each function already returns a Depends() — use directly in dependencies=[]
+@router.get("/", dependencies=[require_permission("posts.read")])
+@router.get("/", dependencies=[require_any_permission("posts.read", "articles.read")])
+@router.get("/", dependencies=[require_role("admin")])
+@router.get("/", dependencies=[require_any_role("admin", "editor")])
+@router.get("/", dependencies=[require_role_or_permission("admin", "posts.delete")])
 ```
 
 ### Middleware
 
 ```python
-from fastapi_role_permission import RoleMiddleware, PermissionMiddleware
+from fastapi_role_permission import RoleMiddleware, PermissionMiddleware, RoleOrPermissionMiddleware
 
 app.add_middleware(RoleMiddleware, roles="admin")
 app.add_middleware(RoleMiddleware, roles="admin|editor", require_all=False)
@@ -393,6 +443,28 @@ app.add_middleware(RoleOrPermissionMiddleware, roles_or_permissions="admin|posts
 
 # Exclude paths from middleware enforcement
 app.add_middleware(RoleMiddleware, roles="admin", exclude_paths=["/health", "/auth"])
+```
+
+### OpenAPI / Swagger annotation
+
+```python
+from fastapi_role_permission import rbac_summary, require_permission
+
+@router.get(
+    "/posts",
+    **rbac_summary(permissions=["posts.read"]),
+    dependencies=[require_permission("posts.read")],
+)
+async def list_posts():
+    ...
+
+@router.delete(
+    "/posts/{id}",
+    **rbac_summary(roles=["admin"], permissions=["posts.delete"]),
+    dependencies=[require_role_or_permission("admin", "posts.delete")],
+)
+async def delete_post(id: int):
+    ...
 ```
 
 ---
@@ -412,7 +484,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 class TeamMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        # Extract team ID from JWT, header, path, etc.
         team_id = request.headers.get("X-Team-ID")
         request.app.state.rbac.set_team_id(int(team_id) if team_id else None)
         return await call_next(request)
@@ -462,6 +533,31 @@ await user.has_permission_to(db, "posts.comments.read")  # True
 
 ---
 
+## Audit Logging
+
+Enable structured audit logs via Python's standard `logging` module — no new dependencies:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)
+
+init_rbac(app, ..., config=PermissionConfig(
+    enable_audit_logging=True,
+    audit_logger_name="fastapi_rbac.audit",  # default
+))
+```
+
+Each role/permission mutation logs a JSON line:
+
+```json
+{"action": "assign_role",      "subject": "admin",      "model_type": "users", "model_id": 1}
+{"action": "remove_role",      "subject": "editor",     "model_type": "users", "model_id": 1}
+{"action": "give_permission",  "subject": "posts.read", "model_type": "users", "model_id": 1}
+{"action": "revoke_permission","subject": "posts.read", "model_type": "users", "model_id": 1}
+```
+
+---
+
 ## Cache Management
 
 ```python
@@ -491,6 +587,12 @@ from fastapi_role_permission import (
     UnauthorizedException,
 )
 ```
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

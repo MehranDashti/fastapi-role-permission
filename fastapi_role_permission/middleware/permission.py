@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 
 class PermissionMiddleware(BaseHTTPMiddleware):
@@ -39,17 +38,15 @@ class PermissionMiddleware(BaseHTTPMiddleware):
             async for db in get_db():
                 user = await get_current_user(db=db)
                 if user is None:
-                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+                    return JSONResponse({"detail": "Unauthorized"}, status_code=401)
                 if self.require_all:
                     has_perm = await user.has_all_permissions(db, *self.permissions)
                 else:
                     has_perm = await user.has_any_permission(db, *self.permissions)
                 if not has_perm:
-                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions.")
+                    return JSONResponse({"detail": "Insufficient permissions."}, status_code=403)
                 break
-        except HTTPException:
-            raise
         except Exception:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
         return await call_next(request)

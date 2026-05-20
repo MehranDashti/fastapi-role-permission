@@ -46,6 +46,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True, nullable=False),
         sa.Column("name", sa.String(125), nullable=False),
         sa.Column("guard_name", sa.String(125), nullable=False, server_default="default"),
+        sa.Column("description", sa.String(255), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -68,6 +69,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True, nullable=False),
         sa.Column("name", sa.String(125), nullable=False),
         sa.Column("guard_name", sa.String(125), nullable=False, server_default="default"),
+        sa.Column("description", sa.String(255), nullable=True),
         sa.Column("team_id", sa.Integer(), nullable=True),
         sa.Column(
             "created_at",

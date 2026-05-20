@@ -18,6 +18,7 @@ Quick start:
 
 from .setup import init_rbac
 from .migrations import create_tables, drop_tables
+from .seeders import seed_roles
 from .config import PermissionConfig, TableNames
 from .models.permission import Permission
 from .models.role import Role
@@ -40,6 +41,7 @@ from .dependencies.checks import (
     require_any_role,
     require_role_or_permission,
 )
+from .dependencies.openapi import rbac_summary
 from .middleware.role import RoleMiddleware
 from .middleware.permission import PermissionMiddleware
 from .middleware.role_or_permission import RoleOrPermissionMiddleware
@@ -51,6 +53,7 @@ __all__ = [
     "init_rbac",
     "create_tables",
     "drop_tables",
+    "seed_roles",
     "PermissionConfig",
     "TableNames",
     # Models
@@ -70,6 +73,7 @@ __all__ = [
     "require_role",
     "require_any_role",
     "require_role_or_permission",
+    "rbac_summary",
     # Middleware
     "RoleMiddleware",
     "PermissionMiddleware",

@@ -1,13 +1,29 @@
 from __future__ import annotations
 
+import json
+import logging
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 if TYPE_CHECKING:
     from .permission import Permission
     from .role import Role
+
+
+def _audit(cfg: "Any", action: str, subject: str, model_type: str, model_id: int) -> None:
+    if not cfg.enable_audit_logging:
+        return
+    logging.getLogger(cfg.audit_logger_name).info(
+        json.dumps({
+            "action": action,
+            "subject": subject,
+            "model_type": model_type,
+            "model_id": model_id,
+        })
+    )
 
 
 class HasPermissions:
@@ -61,6 +77,9 @@ class HasPermissions:
 
         await db.flush()
         await get_registrar().forget_cached_permissions()
+        for perm in permissions:
+            name = perm.name if not isinstance(perm, str) else perm
+            _audit(cfg, "give_permission", name, self.__tablename__, self.id)
         return self
 
     async def revoke_permission_to(
@@ -89,6 +108,9 @@ class HasPermissions:
 
         await db.flush()
         await get_registrar().forget_cached_permissions()
+        for perm in permissions:
+            name = perm.name if not isinstance(perm, str) else perm
+            _audit(cfg, "revoke_permission", name, self.__tablename__, self.id)
         return self
 
     async def sync_permissions(
@@ -371,7 +393,7 @@ class HasPermissions:
             return []
 
         result = await db.execute(
-            select(Role).where(Role.id.in_(role_ids))
+            select(Role).where(Role.id.in_(role_ids)).options(selectinload(Role.permissions))
         )
         return list(result.scalars().all())
 
@@ -426,6 +448,9 @@ class HasRoles(HasPermissions):
 
         await db.flush()
         await get_registrar().forget_cached_permissions()
+        for role in roles:
+            name = role.name if not isinstance(role, str) else role
+            _audit(cfg, "assign_role", name, self.__tablename__, self.id)
         return self
 
     async def remove_role(
@@ -454,6 +479,9 @@ class HasRoles(HasPermissions):
 
         await db.flush()
         await get_registrar().forget_cached_permissions()
+        for role in roles:
+            name = role.name if not isinstance(role, str) else role
+            _audit(cfg, "remove_role", name, self.__tablename__, self.id)
         return self
 
     async def sync_roles(
@@ -491,6 +519,97 @@ class HasRoles(HasPermissions):
         await db.flush()
         await get_registrar().forget_cached_permissions()
         return self
+
+    # ------------------------------------------------------------------ #
+    # Batch operations (class methods)                                    #
+    # ------------------------------------------------------------------ #
+
+    @classmethod
+    async def bulk_assign_roles(
+        cls,
+        db: AsyncSession,
+        models: "list[Any]",
+        role: "str | Role",
+        team_id: int | None = None,
+    ) -> None:
+        """Assign a single role to many model instances in one INSERT."""
+        from .role import Role
+        from .permission import model_has_roles_table
+        from .._state import get_config, get_registrar
+
+        if not models:
+            return
+
+        cfg = get_config()
+        t = model_has_roles_table
+        tid = team_id if cfg.teams_enabled else None
+        tablename = models[0].__tablename__
+
+        resolved = await Role.find_by_name(db, role) if isinstance(role, str) else role
+
+        existing_result = await db.execute(
+            select(t.c.model_id).where(
+                t.c.model_type == tablename,
+                t.c.role_id == resolved.id,
+            )
+        )
+        existing_ids = {row[0] for row in existing_result}
+
+        rows = [
+            {"model_type": tablename, "model_id": m.id, "role_id": resolved.id,
+             **({} if not cfg.teams_enabled else {"team_id": tid})}
+            for m in models
+            if m.id not in existing_ids
+        ]
+        if rows:
+            await db.execute(insert(t), rows)
+            await db.flush()
+            await get_registrar().forget_cached_permissions()
+
+    @classmethod
+    async def bulk_give_permission_to(
+        cls,
+        db: AsyncSession,
+        models: "list[Any]",
+        permission: "str | Permission",
+        team_id: int | None = None,
+    ) -> None:
+        """Give a single permission to many model instances in one INSERT."""
+        from .permission import Permission, model_has_permissions_table
+        from .._state import get_config, get_registrar
+
+        if not models:
+            return
+
+        cfg = get_config()
+        t = model_has_permissions_table
+        tid = team_id if cfg.teams_enabled else None
+        tablename = models[0].__tablename__
+
+        resolved = (
+            await Permission.find_by_name(db, permission)
+            if isinstance(permission, str)
+            else permission
+        )
+
+        existing_result = await db.execute(
+            select(t.c.model_id).where(
+                t.c.model_type == tablename,
+                t.c.permission_id == resolved.id,
+            )
+        )
+        existing_ids = {row[0] for row in existing_result}
+
+        rows = [
+            {"model_type": tablename, "model_id": m.id, "permission_id": resolved.id,
+             **({} if not cfg.teams_enabled else {"team_id": tid})}
+            for m in models
+            if m.id not in existing_ids
+        ]
+        if rows:
+            await db.execute(insert(t), rows)
+            await db.flush()
+            await get_registrar().forget_cached_permissions()
 
     # ------------------------------------------------------------------ #
     # Role checks                                                         #

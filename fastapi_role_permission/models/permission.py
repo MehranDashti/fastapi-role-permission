@@ -7,6 +7,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -53,6 +54,8 @@ model_has_permissions_table = Table(
     Column("model_type", String(125), nullable=False),
     Column("model_id", Integer, nullable=False),
     Column("team_id", Integer, nullable=True),
+    Index("ix_mhp_model", "model_type", "model_id"),
+    Index("ix_mhp_team", "team_id"),
 )
 
 model_has_roles_table = Table(
@@ -67,6 +70,8 @@ model_has_roles_table = Table(
     Column("model_type", String(125), nullable=False),
     Column("model_id", Integer, nullable=False),
     Column("team_id", Integer, nullable=True),
+    Index("ix_mhr_model", "model_type", "model_id"),
+    Index("ix_mhr_team", "team_id"),
 )
 
 
@@ -77,6 +82,7 @@ class Permission(RBACBase):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(125), nullable=False)
     guard_name: Mapped[str] = mapped_column(String(125), nullable=False, default="default")
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -109,6 +115,7 @@ class Permission(RBACBase):
         db: AsyncSession,
         name: str,
         guard_name: str | None = None,
+        description: str | None = None,
     ) -> "Permission":
         from .._state import get_config
         from ..exceptions import PermissionAlreadyExists
@@ -118,7 +125,7 @@ class Permission(RBACBase):
         if existing is not None:
             raise PermissionAlreadyExists.create(name, guard)
 
-        permission = cls(name=name, guard_name=guard)
+        permission = cls(name=name, guard_name=guard, description=description)
         db.add(permission)
         await db.flush()
         await db.refresh(permission)

@@ -21,6 +21,7 @@ class Role(RBACBase):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(125), nullable=False)
     guard_name: Mapped[str] = mapped_column(String(125), nullable=False, default="default")
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -55,6 +56,7 @@ class Role(RBACBase):
         name: str,
         guard_name: str | None = None,
         team_id: int | None = None,
+        description: str | None = None,
     ) -> "Role":
         from .._state import get_config
         from ..exceptions import RoleAlreadyExists
@@ -64,7 +66,7 @@ class Role(RBACBase):
         if existing is not None:
             raise RoleAlreadyExists.create(name, guard)
 
-        role = cls(name=name, guard_name=guard, team_id=team_id)
+        role = cls(name=name, guard_name=guard, team_id=team_id, description=description)
         db.add(role)
         await db.flush()
         await db.refresh(role)

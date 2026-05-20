@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 
 class RoleOrPermissionMiddleware(BaseHTTPMiddleware):
@@ -39,7 +38,7 @@ class RoleOrPermissionMiddleware(BaseHTTPMiddleware):
             async for db in get_db():
                 user = await get_current_user(db=db)
                 if user is None:
-                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+                    return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
                 if await user.has_any_role(db, *self.values):
                     break
@@ -47,14 +46,12 @@ class RoleOrPermissionMiddleware(BaseHTTPMiddleware):
                     if await user.check_permission_to(db, val):
                         break
                 else:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Insufficient roles or permissions.",
+                    return JSONResponse(
+                        {"detail": "Insufficient roles or permissions."},
+                        status_code=403,
                     )
                 break
-        except HTTPException:
-            raise
         except Exception:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
         return await call_next(request)
