@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "fastapi-role-permission"
@@ -52,12 +52,11 @@ Changelog = "https://github.com/MehranDashti/fastapi-role-permission/blob/main/C
 [project.scripts]
 fastapi-rbac = "fastapi_role_permission.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["fastapi_role_permission*"]
+[tool.hatch.build.targets.wheel]
+packages = ["fastapi_role_permission"]
 
-[tool.setuptools.package-data]
-fastapi_role_permission = ["stubs/*.py", "py.typed"]
+[tool.hatch.build.targets.sdist]
+include = ["fastapi_role_permission", "tests", "examples", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
