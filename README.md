@@ -1,8 +1,9 @@
 # fastapi-role-permission
 
 [![Tests](https://github.com/MehranDashti/fastapi-role-permission/actions/workflows/tests.yml/badge.svg)](https://github.com/MehranDashti/fastapi-role-permission/actions/workflows/tests.yml)
-[![PyPI version](https://badge.fury.io/py/fastapi-role-permission.svg)](https://pypi.org/project/fastapi-role-permission/)
+[![PyPI version](https://img.shields.io/pypi/v/fastapi-role-permission.svg)](https://pypi.org/project/fastapi-role-permission/)
 [![Python versions](https://img.shields.io/pypi/pyversions/fastapi-role-permission.svg)](https://pypi.org/project/fastapi-role-permission/)
+[![Downloads](https://img.shields.io/pypi/dm/fastapi-role-permission.svg)](https://pypi.org/project/fastapi-role-permission/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 RBAC (Role-Based Access Control) for FastAPI, inspired by Laravel's [Spatie Permission](https://github.com/spatie/laravel-permission) package.
