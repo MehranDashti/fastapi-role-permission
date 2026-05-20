@@ -46,7 +46,7 @@ def _build_role_detail(roles: tuple[str, ...]) -> str:
 
 def require_permission(*permissions: str) -> Any:
     """
-    FastAPI dependency — user must have ALL of the specified permissions.
+    FastAPI dependency factory — user must have ALL of the specified permissions.
 
     Usage:
         @router.get("/posts", dependencies=[Depends(require_permission("posts.read"))])
@@ -62,12 +62,12 @@ def require_permission(*permissions: str) -> Any:
         return current_user
 
     dependency.__name__ = f"require_permission({'|'.join(permissions)})"
-    return Depends(dependency)
+    return dependency
 
 
 def require_any_permission(*permissions: str) -> Any:
     """
-    FastAPI dependency — user must have AT LEAST ONE of the specified permissions.
+    FastAPI dependency factory — user must have AT LEAST ONE of the specified permissions.
     """
     async def dependency(
         db=Depends(_get_db_dep()),
@@ -79,7 +79,7 @@ def require_any_permission(*permissions: str) -> Any:
         _forbidden(_build_permission_detail(permissions))
 
     dependency.__name__ = f"require_any_permission({'|'.join(permissions)})"
-    return Depends(dependency)
+    return dependency
 
 
 # ------------------------------------------------------------------ #
@@ -88,7 +88,7 @@ def require_any_permission(*permissions: str) -> Any:
 
 def require_role(*roles: str) -> Any:
     """
-    FastAPI dependency — user must have ALL of the specified roles.
+    FastAPI dependency factory — user must have ALL of the specified roles.
     """
     async def dependency(
         db=Depends(_get_db_dep()),
@@ -99,12 +99,12 @@ def require_role(*roles: str) -> Any:
         return current_user
 
     dependency.__name__ = f"require_role({'|'.join(roles)})"
-    return Depends(dependency)
+    return dependency
 
 
 def require_any_role(*roles: str) -> Any:
     """
-    FastAPI dependency — user must have AT LEAST ONE of the specified roles.
+    FastAPI dependency factory — user must have AT LEAST ONE of the specified roles.
     """
     async def dependency(
         db=Depends(_get_db_dep()),
@@ -115,7 +115,7 @@ def require_any_role(*roles: str) -> Any:
         return current_user
 
     dependency.__name__ = f"require_any_role({'|'.join(roles)})"
-    return Depends(dependency)
+    return dependency
 
 
 # ------------------------------------------------------------------ #
@@ -124,7 +124,7 @@ def require_any_role(*roles: str) -> Any:
 
 def require_role_or_permission(*roles_or_permissions: str) -> Any:
     """
-    FastAPI dependency — user must have at least one of the specified
+    FastAPI dependency factory — user must have at least one of the specified
     roles OR at least one of the specified permissions.
 
     The same list is checked against both roles and permissions.
@@ -150,4 +150,4 @@ def require_role_or_permission(*roles_or_permissions: str) -> Any:
         )
 
     dependency.__name__ = f"require_role_or_permission({'|'.join(roles_or_permissions)})"
-    return Depends(dependency)
+    return dependency

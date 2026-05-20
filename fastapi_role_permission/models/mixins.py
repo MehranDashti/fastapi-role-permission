@@ -76,6 +76,7 @@ class HasPermissions:
                 await db.execute(insert(t).values(**values))
 
         await db.flush()
+        db.expire(self, ["roles", "direct_permissions"])
         await get_registrar().forget_cached_permissions()
         for perm in permissions:
             name = perm.name if not isinstance(perm, str) else perm
@@ -107,6 +108,7 @@ class HasPermissions:
             await db.execute(delete(t).where(*cond))
 
         await db.flush()
+        db.expire(self, ["roles", "direct_permissions"])
         await get_registrar().forget_cached_permissions()
         for perm in permissions:
             name = perm.name if not isinstance(perm, str) else perm
@@ -148,6 +150,7 @@ class HasPermissions:
             await db.execute(insert(t).values(**values))
 
         await db.flush()
+        db.expire(self, ["roles", "direct_permissions"])
         await get_registrar().forget_cached_permissions()
         return self
 
@@ -447,6 +450,7 @@ class HasRoles(HasPermissions):
                 await db.execute(insert(t).values(**values))
 
         await db.flush()
+        db.expire(self, ["roles", "direct_permissions"])
         await get_registrar().forget_cached_permissions()
         for role in roles:
             name = role.name if not isinstance(role, str) else role
@@ -478,6 +482,7 @@ class HasRoles(HasPermissions):
             await db.execute(delete(t).where(*cond))
 
         await db.flush()
+        db.expire(self, ["roles", "direct_permissions"])
         await get_registrar().forget_cached_permissions()
         for role in roles:
             name = role.name if not isinstance(role, str) else role
@@ -517,6 +522,7 @@ class HasRoles(HasPermissions):
             await db.execute(insert(t).values(**values))
 
         await db.flush()
+        db.expire(self, ["roles", "direct_permissions"])
         await get_registrar().forget_cached_permissions()
         return self
 
