@@ -22,6 +22,137 @@ pip install fastapi-role-permission
 
 ---
 
+## Migrations
+
+After installing the package you need to create **5 RBAC tables** in your database:
+
+| Table | Purpose |
+|-------|---------|
+| `permissions` | Stores every permission definition |
+| `roles` | Stores every role definition |
+| `role_has_permissions` | Which permissions belong to a role |
+| `model_has_roles` | Which roles are assigned to a user |
+| `model_has_permissions` | Direct permissions assigned to a user |
+
+Pick the approach that matches your project setup:
+
+---
+
+### Approach 1 — CLI (quickest, no Alembic needed)
+
+```bash
+# PostgreSQL
+fastapi-rbac create-tables --url postgresql+asyncpg://user:pass@localhost/mydb
+
+# MySQL
+fastapi-rbac create-tables --url mysql+aiomysql://user:pass@localhost/mydb
+
+# SQLite (development)
+fastapi-rbac create-tables --url sqlite+aiosqlite:///./dev.db
+```
+
+> `create-tables` uses SQLAlchemy's `create_all` — it is **idempotent** and will not drop or alter existing tables.
+
+---
+
+### Approach 2 — Alembic migration (recommended for production)
+
+**Step 1 — Copy the migration stub into your project:**
+
+```bash
+fastapi-rbac init-migrations --directory migrations/versions
+```
+
+This creates `migrations/versions/create_rbac_tables.py` with a complete `upgrade()` and `downgrade()` already written.
+
+**Step 2 — If you have an existing Alembic project**, open the copied file and set `down_revision` to your current latest revision:
+
+```python
+# migrations/versions/create_rbac_tables.py
+revision = "fastapi_rbac_001"
+down_revision = "your_latest_revision_id"   # ← set this
+```
+
+If this is a fresh project with no previous migrations, leave `down_revision = None`.
+
+**Step 3 — Run the migration:**
+
+```bash
+alembic upgrade head
+```
+
+**To roll back:**
+
+```bash
+alembic downgrade -1
+```
+
+---
+
+### Approach 3 — Programmatic (in app lifespan)
+
+Useful when you don't use Alembic and want tables created automatically on startup.
+
+```python
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import create_async_engine
+from fastapi_role_permission import create_tables, init_rbac
+
+DATABASE_URL = "postgresql+asyncpg://user:pass@localhost/mydb"
+engine = create_async_engine(DATABASE_URL)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_tables(engine)   # creates tables if they don't exist
+    yield
+
+app = FastAPI(lifespan=lifespan)
+init_rbac(app, get_db=get_db, get_current_user=get_current_user, user_model=User)
+```
+
+---
+
+### Approach 4 — Alembic `env.py` (autogenerate)
+
+If you prefer Alembic to detect and generate migrations automatically, add `RBACBase.metadata` to your Alembic environment:
+
+```python
+# migrations/env.py
+from app.db.base import Base                          # your app's Base
+from fastapi_role_permission.models.base import RBACBase  # RBAC Base
+
+target_metadata = [Base.metadata, RBACBase.metadata]  # include both
+```
+
+Then generate and run:
+
+```bash
+alembic revision --autogenerate -m "add rbac tables"
+alembic upgrade head
+```
+
+---
+
+### Drop / reset tables (dev only)
+
+```bash
+# CLI — prompts for confirmation
+fastapi-rbac drop-tables --url sqlite+aiosqlite:///./dev.db
+
+# CLI — skip confirmation
+fastapi-rbac drop-tables --url sqlite+aiosqlite:///./dev.db --yes
+```
+
+Or programmatically:
+
+```python
+from fastapi_role_permission import drop_tables
+await drop_tables(engine)
+```
+
+---
+
 ## Quick Start
 
 ### 1. Add `HasRoles` to your User model
@@ -41,18 +172,12 @@ class User(Base, HasRoles):
     # ... your other fields
 ```
 
-### 2. Create RBAC tables
+### 2. Run migrations
 
-```python
-from fastapi_role_permission.models.base import RBACBase
+See the [Migrations](#migrations) section above for all options. Quickest for development:
 
-# With SQLAlchemy create_all:
-async with engine.begin() as conn:
-    await conn.run_sync(Base.metadata.create_all)
-    await conn.run_sync(RBACBase.metadata.create_all)
-
-# With Alembic env.py — include both metadatas:
-target_metadata = [Base.metadata, RBACBase.metadata]
+```bash
+fastapi-rbac create-tables --url sqlite+aiosqlite:///./dev.db
 ```
 
 ### 3. Initialize in your FastAPI app

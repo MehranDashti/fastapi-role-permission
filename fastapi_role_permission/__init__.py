@@ -17,6 +17,7 @@ Quick start:
 """
 
 from .setup import init_rbac
+from .migrations import create_tables, drop_tables
 from .config import PermissionConfig, TableNames
 from .models.permission import Permission
 from .models.role import Role
@@ -48,6 +49,8 @@ __version__ = "0.1.0"
 __all__ = [
     # Setup
     "init_rbac",
+    "create_tables",
+    "drop_tables",
     "PermissionConfig",
     "TableNames",
     # Models

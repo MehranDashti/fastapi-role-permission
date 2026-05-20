@@ -37,9 +37,15 @@ dev = [
     "anyio[trio]>=4.0",
 ]
 
+[project.scripts]
+fastapi-rbac = "fastapi_role_permission.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["fastapi_role_permission*"]
+
+[tool.setuptools.package-data]
+fastapi_role_permission = ["stubs/*.py"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
