@@ -24,6 +24,11 @@ License: MIT License
         OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
         SOFTWARE.
         
+Project-URL: Homepage, https://github.com/MehranDashti/fastapi-role-permission
+Project-URL: Documentation, https://github.com/MehranDashti/fastapi-role-permission#readme
+Project-URL: Repository, https://github.com/MehranDashti/fastapi-role-permission
+Project-URL: Bug Tracker, https://github.com/MehranDashti/fastapi-role-permission/issues
+Project-URL: Changelog, https://github.com/MehranDashti/fastapi-role-permission/blob/main/CHANGELOG.md
 Keywords: fastapi,rbac,roles,permissions,authorization
 Classifier: Development Status :: 3 - Alpha
 Classifier: Intended Audience :: Developers
@@ -33,23 +38,34 @@ Classifier: Programming Language :: Python :: 3.10
 Classifier: Programming Language :: Python :: 3.11
 Classifier: Programming Language :: Python :: 3.12
 Classifier: Framework :: FastAPI
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Security
+Classifier: Typing :: Typed
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: fastapi>=0.111.0
 Requires-Dist: sqlalchemy>=2.0.0
-Requires-Dist: redis>=5.0.0
 Requires-Dist: pydantic>=2.0.0
+Provides-Extra: redis
+Requires-Dist: redis>=5.0.0; extra == "redis"
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0; extra == "dev"
 Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
+Requires-Dist: pytest-cov>=5.0; extra == "dev"
 Requires-Dist: httpx>=0.27; extra == "dev"
 Requires-Dist: aiosqlite>=0.20; extra == "dev"
 Requires-Dist: greenlet>=3.0; extra == "dev"
 Requires-Dist: anyio[trio]>=4.0; extra == "dev"
+Requires-Dist: redis>=5.0.0; extra == "dev"
 Dynamic: license-file
 
 # fastapi-role-permission
+
+[![Tests](https://github.com/MehranDashti/fastapi-role-permission/actions/workflows/tests.yml/badge.svg)](https://github.com/MehranDashti/fastapi-role-permission/actions/workflows/tests.yml)
+[![PyPI version](https://badge.fury.io/py/fastapi-role-permission.svg)](https://pypi.org/project/fastapi-role-permission/)
+[![Python versions](https://img.shields.io/pypi/pyversions/fastapi-role-permission.svg)](https://pypi.org/project/fastapi-role-permission/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 RBAC (Role-Based Access Control) for FastAPI, inspired by Laravel's [Spatie Permission](https://github.com/spatie/laravel-permission) package.
 
@@ -60,6 +76,7 @@ RBAC (Role-Based Access Control) for FastAPI, inspired by Laravel's [Spatie Perm
 - Wildcard permission patterns (`posts.*`, `*`)
 - FastAPI `Depends`-based guards + Starlette middleware
 - SQLAlchemy 2.x async
+- Audit logging (optional, zero new dependencies)
 
 ---
 
@@ -69,7 +86,144 @@ RBAC (Role-Based Access Control) for FastAPI, inspired by Laravel's [Spatie Perm
 pip install fastapi-role-permission
 ```
 
-**Optional: Redis support** (included by default via the `redis` package).
+**With Redis cache:**
+
+```bash
+pip install fastapi-role-permission[redis]
+```
+
+Without Redis the package automatically falls back to an in-memory cache (suitable for single-process apps and development).
+
+---
+
+## Migrations
+
+After installing the package you need to create **5 RBAC tables** in your database:
+
+| Table | Purpose |
+|-------|---------|
+| `permissions` | Stores every permission definition |
+| `roles` | Stores every role definition |
+| `role_has_permissions` | Which permissions belong to a role |
+| `model_has_roles` | Which roles are assigned to a user |
+| `model_has_permissions` | Direct permissions assigned to a user |
+
+Pick the approach that matches your project setup:
+
+---
+
+### Approach 1 — CLI (quickest, no Alembic needed)
+
+```bash
+# PostgreSQL
+fastapi-rbac create-tables --url postgresql+asyncpg://user:pass@localhost/mydb
+
+# MySQL
+fastapi-rbac create-tables --url mysql+aiomysql://user:pass@localhost/mydb
+
+# SQLite (development)
+fastapi-rbac create-tables --url sqlite+aiosqlite:///./dev.db
+```
+
+> `create-tables` uses SQLAlchemy's `create_all` — it is **idempotent** and will not drop or alter existing tables.
+
+---
+
+### Approach 2 — Alembic migration (recommended for production)
+
+**Step 1 — Copy the migration stub into your project:**
+
+```bash
+fastapi-rbac init-migrations --directory migrations/versions
+```
+
+This creates `migrations/versions/create_rbac_tables.py` with a complete `upgrade()` and `downgrade()` already written.
+
+**Step 2 — If you have an existing Alembic project**, open the copied file and set `down_revision` to your current latest revision:
+
+```python
+# migrations/versions/create_rbac_tables.py
+revision = "fastapi_rbac_001"
+down_revision = "your_latest_revision_id"   # ← set this
+```
+
+If this is a fresh project with no previous migrations, leave `down_revision = None`.
+
+**Step 3 — Run the migration:**
+
+```bash
+alembic upgrade head
+```
+
+**To roll back:**
+
+```bash
+alembic downgrade -1
+```
+
+---
+
+### Approach 3 — Programmatic (in app lifespan)
+
+Useful when you don't use Alembic and want tables created automatically on startup.
+
+```python
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import create_async_engine
+from fastapi_role_permission import create_tables, init_rbac
+
+DATABASE_URL = "postgresql+asyncpg://user:pass@localhost/mydb"
+engine = create_async_engine(DATABASE_URL)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_tables(engine)   # creates tables if they don't exist
+    yield
+
+app = FastAPI(lifespan=lifespan)
+init_rbac(app, get_db=get_db, get_current_user=get_current_user, user_model=User)
+```
+
+---
+
+### Approach 4 — Alembic `env.py` (autogenerate)
+
+If you prefer Alembic to detect and generate migrations automatically, add `RBACBase.metadata` to your Alembic environment:
+
+```python
+# migrations/env.py
+from app.db.base import Base                          # your app's Base
+from fastapi_role_permission.models.base import RBACBase  # RBAC Base
+
+target_metadata = [Base.metadata, RBACBase.metadata]  # include both
+```
+
+Then generate and run:
+
+```bash
+alembic revision --autogenerate -m "add rbac tables"
+alembic upgrade head
+```
+
+---
+
+### Drop / reset tables (dev only)
+
+```bash
+# CLI — prompts for confirmation
+fastapi-rbac drop-tables --url sqlite+aiosqlite:///./dev.db
+
+# CLI — skip confirmation
+fastapi-rbac drop-tables --url sqlite+aiosqlite:///./dev.db --yes
+```
+
+Or programmatically:
+
+```python
+from fastapi_role_permission import drop_tables
+await drop_tables(engine)
+```
 
 ---
 
@@ -92,18 +246,12 @@ class User(Base, HasRoles):
     # ... your other fields
 ```
 
-### 2. Create RBAC tables
+### 2. Run migrations
 
-```python
-from fastapi_role_permission.models.base import RBACBase
+See the [Migrations](#migrations) section above for all options. Quickest for development:
 
-# With SQLAlchemy create_all:
-async with engine.begin() as conn:
-    await conn.run_sync(Base.metadata.create_all)
-    await conn.run_sync(RBACBase.metadata.create_all)
-
-# With Alembic env.py — include both metadatas:
-target_metadata = [Base.metadata, RBACBase.metadata]
+```bash
+fastapi-rbac create-tables --url sqlite+aiosqlite:///./dev.db
 ```
 
 ### 3. Initialize in your FastAPI app
@@ -127,25 +275,38 @@ init_rbac(
 )
 ```
 
-### 4. Protect routes
+### 4. Seed roles and permissions
 
 ```python
-from fastapi import Depends
+from fastapi_role_permission import seed_roles
+
+# Call once at startup or in a migration — safe to call multiple times
+await seed_roles(db, {
+    "admin":  ["*"],
+    "editor": ["posts.read", "posts.write"],
+    "viewer": ["posts.read"],
+})
+```
+
+### 5. Protect routes
+
+```python
 from fastapi_role_permission import require_permission, require_role, require_any_role
 
-@app.get("/posts", dependencies=[Depends(require_permission("posts.read"))])
+# require_* already returns a Depends() — no extra wrapping needed
+@app.get("/posts", dependencies=[require_permission("posts.read")])
 async def list_posts():
     return {"posts": [...]}
 
-@app.post("/posts", dependencies=[Depends(require_permission("posts.write"))])
+@app.post("/posts", dependencies=[require_permission("posts.write")])
 async def create_post():
     ...
 
-@app.get("/admin", dependencies=[Depends(require_role("admin"))])
+@app.get("/admin", dependencies=[require_role("admin")])
 async def admin_panel():
     ...
 
-@app.get("/content", dependencies=[Depends(require_any_role("admin", "editor"))])
+@app.get("/content", dependencies=[require_any_role("admin", "editor")])
 async def content_area():
     ...
 ```
@@ -157,14 +318,14 @@ async def content_area():
 ```python
 from fastapi_role_permission import Permission, Role
 
-# Create permissions
-read_posts  = await Permission.find_or_create(db, "posts.read")
-write_posts = await Permission.find_or_create(db, "posts.write")
-del_posts   = await Permission.find_or_create(db, "posts.delete")
+# Create permissions (with optional description)
+read_posts  = await Permission.find_or_create(db, "posts.read",   description="Read blog posts")
+write_posts = await Permission.find_or_create(db, "posts.write",  description="Create/edit blog posts")
+del_posts   = await Permission.find_or_create(db, "posts.delete", description="Delete blog posts")
 
-# Create roles
-editor = await Role.find_or_create(db, "editor")
-admin  = await Role.find_or_create(db, "admin")
+# Create roles (with optional description)
+editor = await Role.find_or_create(db, "editor", description="Can read and write posts")
+admin  = await Role.find_or_create(db, "admin",  description="Full access")
 
 # Assign permissions to roles
 await editor.give_permission_to(db, "posts.read", "posts.write")
@@ -177,15 +338,15 @@ await user.assign_role(db, "editor")
 await user.give_permission_to(db, "posts.delete")
 
 # Check permissions
-await user.has_permission_to(db, "posts.read")   # True (via role)
-await user.has_permission_to(db, "posts.delete") # True (direct)
+await user.has_permission_to(db, "posts.read")        # True (via role)
+await user.has_permission_to(db, "posts.delete")      # True (direct)
 await user.has_direct_permission(db, "posts.delete")  # True
 await user.has_permission_via_role(db, "posts.read")  # True
 
 # Check roles
-await user.has_role(db, "editor")                # True
-await user.has_any_role(db, "admin", "editor")   # True
-await user.has_all_roles(db, "admin", "editor")  # False
+await user.has_role(db, "editor")               # True
+await user.has_any_role(db, "admin", "editor")  # True
+await user.has_all_roles(db, "admin", "editor") # False
 ```
 
 ---
@@ -216,14 +377,30 @@ PermissionConfig(
     wildcard_enabled=False,         # enable wildcard patterns
     display_permission_in_exception=False,  # show required perms in 403 detail
     display_role_in_exception=False,        # show required roles in 403 detail
+    enable_audit_logging=False,     # log role/permission changes to standard logging
+    audit_logger_name="fastapi_rbac.audit", # logger name for audit events
 )
+```
+
+### `seed_roles(db, config, guard_name=None)`
+
+Bootstrap roles and permissions from a dict. Idempotent — safe to call on every startup.
+
+```python
+from fastapi_role_permission import seed_roles
+
+await seed_roles(db, {
+    "admin":  ["*"],
+    "editor": ["posts.read", "posts.write"],
+    "viewer": ["posts.read"],
+})
 ```
 
 ### `Permission` model
 
 ```python
-# Create
-perm = await Permission.create(db, "posts.read", guard_name="default")
+# Create (description is optional)
+perm = await Permission.create(db, "posts.read", description="Read blog posts")
 
 # Find
 perm = await Permission.find_by_name(db, "posts.read")
@@ -234,8 +411,8 @@ perm = await Permission.find_or_create(db, "posts.read")
 ### `Role` model
 
 ```python
-# Create
-role = await Role.create(db, "admin", guard_name="default", team_id=None)
+# Create (description is optional)
+role = await Role.create(db, "admin", description="Full access", team_id=None)
 
 # Find
 role = await Role.find_by_name(db, "admin")
@@ -279,13 +456,21 @@ await user.has_direct_permission(db, "posts.read")     # True only if direct
 await user.has_permission_via_role(db, "posts.read")   # True only if via role
 await user.has_any_permission(db, "posts.read", "posts.write")
 await user.has_all_permissions(db, "posts.read", "posts.write")
-await user.has_any_direct_permission(db, "posts.read")
-await user.has_all_direct_permissions(db, "posts.read", "posts.write")
 
 await user.get_direct_permissions(db)       # [Permission, ...]
 await user.get_permissions_via_roles(db)    # [Permission, ...]
 await user.get_all_permissions(db)          # combined, deduped
 await user.get_permission_names(db)         # ["posts.read", ...]
+```
+
+**Batch operations** (class methods for bulk assignments):
+
+```python
+# Assign one role to many users in a single INSERT
+await User.bulk_assign_roles(db, [user1, user2, user3], "viewer")
+
+# Give one permission to many users in a single INSERT
+await User.bulk_give_permission_to(db, [user1, user2], "posts.read")
 ```
 
 ### Dependency guards
@@ -299,17 +484,18 @@ from fastapi_role_permission import (
     require_role_or_permission,  # user must have a role OR permission from the list
 )
 
-@router.get("/", dependencies=[Depends(require_permission("posts.read"))])
-@router.get("/", dependencies=[Depends(require_any_permission("posts.read", "articles.read"))])
-@router.get("/", dependencies=[Depends(require_role("admin"))])
-@router.get("/", dependencies=[Depends(require_any_role("admin", "editor"))])
-@router.get("/", dependencies=[Depends(require_role_or_permission("admin", "posts.delete"))])
+# Each function already returns a Depends() — use directly in dependencies=[]
+@router.get("/", dependencies=[require_permission("posts.read")])
+@router.get("/", dependencies=[require_any_permission("posts.read", "articles.read")])
+@router.get("/", dependencies=[require_role("admin")])
+@router.get("/", dependencies=[require_any_role("admin", "editor")])
+@router.get("/", dependencies=[require_role_or_permission("admin", "posts.delete")])
 ```
 
 ### Middleware
 
 ```python
-from fastapi_role_permission import RoleMiddleware, PermissionMiddleware
+from fastapi_role_permission import RoleMiddleware, PermissionMiddleware, RoleOrPermissionMiddleware
 
 app.add_middleware(RoleMiddleware, roles="admin")
 app.add_middleware(RoleMiddleware, roles="admin|editor", require_all=False)
@@ -319,6 +505,28 @@ app.add_middleware(RoleOrPermissionMiddleware, roles_or_permissions="admin|posts
 
 # Exclude paths from middleware enforcement
 app.add_middleware(RoleMiddleware, roles="admin", exclude_paths=["/health", "/auth"])
+```
+
+### OpenAPI / Swagger annotation
+
+```python
+from fastapi_role_permission import rbac_summary, require_permission
+
+@router.get(
+    "/posts",
+    **rbac_summary(permissions=["posts.read"]),
+    dependencies=[require_permission("posts.read")],
+)
+async def list_posts():
+    ...
+
+@router.delete(
+    "/posts/{id}",
+    **rbac_summary(roles=["admin"], permissions=["posts.delete"]),
+    dependencies=[require_role_or_permission("admin", "posts.delete")],
+)
+async def delete_post(id: int):
+    ...
 ```
 
 ---
@@ -338,7 +546,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 class TeamMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        # Extract team ID from JWT, header, path, etc.
         team_id = request.headers.get("X-Team-ID")
         request.app.state.rbac.set_team_id(int(team_id) if team_id else None)
         return await call_next(request)
@@ -388,6 +595,31 @@ await user.has_permission_to(db, "posts.comments.read")  # True
 
 ---
 
+## Audit Logging
+
+Enable structured audit logs via Python's standard `logging` module — no new dependencies:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)
+
+init_rbac(app, ..., config=PermissionConfig(
+    enable_audit_logging=True,
+    audit_logger_name="fastapi_rbac.audit",  # default
+))
+```
+
+Each role/permission mutation logs a JSON line:
+
+```json
+{"action": "assign_role",      "subject": "admin",      "model_type": "users", "model_id": 1}
+{"action": "remove_role",      "subject": "editor",     "model_type": "users", "model_id": 1}
+{"action": "give_permission",  "subject": "posts.read", "model_type": "users", "model_id": 1}
+{"action": "revoke_permission","subject": "posts.read", "model_type": "users", "model_id": 1}
+```
+
+---
+
 ## Cache Management
 
 ```python
@@ -417,6 +649,12 @@ from fastapi_role_permission import (
     UnauthorizedException,
 )
 ```
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
