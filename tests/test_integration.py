@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -125,7 +125,7 @@ async def test_require_permission_grants_200(int_ctx, user_holder):
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_permission("posts.read")])
+    @app.get("/protected", dependencies=[Depends(require_permission("posts.read"))])
     async def _():
         return {"ok": True}
 
@@ -143,7 +143,7 @@ async def test_require_permission_returns_403(int_ctx, user_holder):
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_permission("posts.read")])
+    @app.get("/protected", dependencies=[Depends(require_permission("posts.read"))])
     async def _():
         return {"ok": True}
 
@@ -168,7 +168,7 @@ async def test_require_any_permission_grants_200(int_ctx, user_holder):
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_any_permission("posts.read", "posts.write")])
+    @app.get("/protected", dependencies=[Depends(require_any_permission("posts.read", "posts.write"))])
     async def _():
         return {"ok": True}
 
@@ -186,7 +186,7 @@ async def test_require_any_permission_returns_403(int_ctx, user_holder):
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_any_permission("posts.read", "posts.write")])
+    @app.get("/protected", dependencies=[Depends(require_any_permission("posts.read", "posts.write"))])
     async def _():
         return {"ok": True}
 
@@ -211,7 +211,7 @@ async def test_require_role_grants_200(int_ctx, user_holder):
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_role("admin")])
+    @app.get("/protected", dependencies=[Depends(require_role("admin"))])
     async def _():
         return {"ok": True}
 
@@ -230,7 +230,7 @@ async def test_require_role_returns_403(int_ctx, user_holder):
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_role("admin")])
+    @app.get("/protected", dependencies=[Depends(require_role("admin"))])
     async def _():
         return {"ok": True}
 
@@ -255,7 +255,7 @@ async def test_require_any_role_grants_200(int_ctx, user_holder):
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_any_role("admin", "editor")])
+    @app.get("/protected", dependencies=[Depends(require_any_role("admin", "editor"))])
     async def _():
         return {"ok": True}
 
@@ -275,7 +275,7 @@ async def test_require_any_role_returns_403(int_ctx, user_holder):
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_any_role("admin", "editor")])
+    @app.get("/protected", dependencies=[Depends(require_any_role("admin", "editor"))])
     async def _():
         return {"ok": True}
 
@@ -300,7 +300,7 @@ async def test_require_role_or_permission_grants_200_via_role(int_ctx, user_hold
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_role_or_permission("admin", "posts.delete")])
+    @app.get("/protected", dependencies=[Depends(require_role_or_permission("admin", "posts.delete"))])
     async def _():
         return {"ok": True}
 
@@ -320,7 +320,7 @@ async def test_require_role_or_permission_grants_200_via_permission(int_ctx, use
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_role_or_permission("admin", "posts.delete")])
+    @app.get("/protected", dependencies=[Depends(require_role_or_permission("admin", "posts.delete"))])
     async def _():
         return {"ok": True}
 
@@ -339,7 +339,7 @@ async def test_require_role_or_permission_returns_403(int_ctx, user_holder):
 
     app = FastAPI()
 
-    @app.get("/protected", dependencies=[require_role_or_permission("admin", "posts.delete")])
+    @app.get("/protected", dependencies=[Depends(require_role_or_permission("admin", "posts.delete"))])
     async def _():
         return {"ok": True}
 

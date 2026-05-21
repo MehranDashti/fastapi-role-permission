@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fastapi-role-permission"
-version = "0.1.0"
+version = "0.1.2"
 description = "RBAC for FastAPI inspired by Laravel Spatie Permission — roles, permissions, teams, Redis cache"
 readme = "README.md"
 license = { file = "LICENSE" }
